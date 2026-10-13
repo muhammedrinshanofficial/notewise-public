@@ -1,0 +1,72 @@
+name: Terraform CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+# Only one run at a time, so two runs never fight over the Terraform state lock.
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install render_pdf libraries
+        run: |
+          python -m pip install -r lambdas/render_pdf/requirements.txt --target lambdas/render_pdf --no-compile --only-binary=:all:
+
+      - name: Build Lambda zips
+        run: python scripts/build_lambdas.py
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.16.2"
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Connect to AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/elearning-pipeline-github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+        working-directory: terraform/main
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: terraform/main
+
+      - name: Terraform plan (pull requests)
+        if: github.event_name == 'pull_request'
+        run: terraform plan -input=false -var="unique_suffix=<UNIQUE_SUFFIX>"
+        working-directory: terraform/main
+
+      - name: Terraform apply (merge to main)
+        if: github.event_name == 'push'
+        run: terraform apply -input=false -auto-approve -var="unique_suffix=<UNIQUE_SUFFIX>"
+        working-directory: terraform/main

@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notewise - turn a lecture into study notes</title>
+<meta name="description" content="Upload a lecture video and receive a PDF of study notes with a summary and key topics.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231F3FBF'/%3E%3Cpath d='M10 8h9l4 4v12H10z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h7M13 20h7' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ground: #F3F5F8;
+    --surface: #FFFFFF;
+    --ink: #121C2B;
+    --muted: #586576;
+    --line: #D5DBE3;
+    --line-strong: #B4BECB;
+    --primary: #1F3FBF;
+    --primary-hover: #183399;
+    --primary-tint: #E8ECFA;
+    --highlight: #FFE27A;
+    --ok: #17734A;
+    --ok-tint: #E4F3EB;
+    --error: #B3261E;
+    --error-ink: #7D1A14;
+    --error-tint: #FCECEA;
+    --error-line: #F0C7C3;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+    --paper: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color-scheme: light;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -4rem;
+    padding: 0.6rem 1rem;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 6px;
+    z-index: 10;
+  }
+  .skip-link:focus { top: 1rem; }
+
+  .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ---------- Header ---------- */
+  .site-header { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .wrap { max-width: 72rem; margin: 0 auto; padding: 0 1.5rem; }
+  .header-inner { display: flex; align-items: center; height: 3.75rem; }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .brand svg { width: 1.75rem; height: 1.75rem; }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 3rem;
+    padding-bottom: 5rem;
+  }
+  .intro { margin-bottom: 2rem; }
+  .uploader { margin-bottom: 3rem; }
+  .recent { margin-bottom: 3rem; }
+  .sample { margin-top: 0; }
+
+  @media (min-width: 62rem) {
+    .layout {
+      grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+      grid-template-areas:
+        "intro sample"
+        "uploader sample"
+        "recent sample";
+      column-gap: 5rem;
+      align-items: start;
+      padding-top: 4rem;
+    }
+    .intro { grid-area: intro; }
+    .uploader { grid-area: uploader; }
+    .recent { grid-area: recent; }
+    .sample { grid-area: sample; position: sticky; top: 2rem; margin-top: 0; }
+  }
+
+  h1 {
+    margin: 0 0 0.9rem;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2rem, 4.6vw, 2.85rem);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+  }
+  .lede { margin: 0; max-width: 30rem; color: var(--muted); font-size: 1.05rem; }
+
+  /* ---------- Drop area ---------- */
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .dropzone { display: block; cursor: pointer; }
+  .dz-surface {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 2.75rem 1.5rem;
+    text-align: center;
+    background: var(--surface);
+    border: 1.5px dashed var(--line-strong);
+    border-radius: 12px;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .dz-surface * { pointer-events: none; }
+  .dropzone:hover .dz-surface,
+  .dropzone.is-over .dz-surface { border-color: var(--primary); background: var(--primary-tint); }
+  .dropzone input:focus-visible ~ .dz-surface { outline: 3px solid var(--primary); outline-offset: 3px; }
+  .dz-icon { width: 2.75rem; height: 2.75rem; margin-bottom: 0.6rem; color: var(--primary); stroke-width: 1.5; }
+  .dz-title { margin: 0; font-weight: 600; font-size: 1.05rem; }
+  .dz-title .link { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+  .dz-hint { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+  /* ---------- Selected file + progress ---------- */
+  .file-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .file-icon {
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 8px;
+    background: var(--primary-tint);
+    color: var(--primary);
+  }
+  .file-name { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-meta { margin: 0; color: var(--muted); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+
+  .progress { grid-column: 1 / -1; margin-top: 0.6rem; }
+  .bar { height: 8px; overflow: hidden; background: var(--primary-tint); border-radius: 999px; }
+  .bar-fill { width: 0; height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.25s linear; }
+  .progress-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin-top: 0.55rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .link-btn {
+    padding: 0.4rem 0.55rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--primary);
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .link-btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 1px; }
+
+  /* ---------- Language ---------- */
+  .field { margin: 1.75rem 0 0; padding: 0; border: 0; min-width: 0; }
+  .field legend { padding: 0; margin-bottom: 0.55rem; font-weight: 600; }
+  .segmented {
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    padding: 4px;
+    background: #E6EAF0;
+    border-radius: 10px;
+  }
+  .segmented label {
+    padding: 0.5rem 1.4rem;
+    text-align: center;
+    font-weight: 500;
+    color: var(--muted);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .segmented input:checked + label {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(18, 28, 43, 0.18);
+  }
+  .segmented input:focus-visible + label { outline: 3px solid var(--primary); outline-offset: 2px; }
+  .segmented input:disabled + label { cursor: not-allowed; opacity: 0.6; }
+  .hint { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.92rem; }
+  .select-wrap select {
+    width: 100%;
+    max-width: 20rem;
+    padding: 0.7rem 0.9rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+  }
+  .select-wrap select:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+  .select-wrap select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* ---------- Messages ---------- */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin-top: 1.25rem;
+    padding: 0.8rem 1rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+  }
+  .banner p { margin: 0; }
+  .banner .icon { margin-top: 0.15rem; }
+  .banner-error { background: var(--error-tint); color: var(--error-ink); border: 1px solid var(--error-line); }
+  .banner-info { background: var(--primary-tint); color: var(--ink); border: 1px solid #C9D2F2; }
+
+  /* ---------- Buttons ---------- */
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.75rem; }
+  .btn {
+    padding: 0.8rem 1.5rem;
+    font: inherit;
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+  .btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .btn-primary:focus-visible { outline-color: var(--ink); }
+  .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+  .btn-secondary:hover { background: var(--ground); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---------- Success ---------- */
+  .success { padding-top: 1.75rem; border-top: 1px solid var(--line); }
+  .success:focus { outline: none; }
+  .success-mark {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 1rem;
+    border-radius: 50%;
+    background: var(--ok-tint);
+    color: var(--ok);
+  }
+  .success-mark .icon { width: 1.6rem; height: 1.6rem; stroke-width: 2.3; }
+  .success-mark path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 0.5s 0.1s ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .success h2 { margin: 0 0 0.4rem; font-size: 1.35rem; line-height: 1.25; }
+  .success p { margin: 0; color: var(--muted); }
+  .ref-label { display: block; margin: 1.5rem 0 0.4rem; font-weight: 600; font-size: 0.95rem; }
+  .ref {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.5rem 0.45rem 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .ref code {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 0.85rem;
+  }
+  .ref .link-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .success .btn { margin-top: 1.75rem; }
+
+  /* ---------- Recent uploads ---------- */
+  .recent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--line-strong); }
+  .recent-head h2 { margin: 0; font-size: 1.1rem; }
+  .recent-list { margin: 0; padding: 0; list-style: none; }
+  .recent-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 1rem;
+    align-items: start;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .recent-name { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-meta { margin: 0.1rem 0 0; color: var(--muted); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  .recent-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+    .badge {
+    padding: 0.15rem 0.65rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--primary);
+    background: var(--primary-tint);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .badge-ready { color: var(--ok); background: var(--ok-tint); }
+  .badge-failed { color: var(--error-ink); background: var(--error-tint); }
+  .badge-expired { color: var(--muted); background: #E6EAF0; }
+  .recent-side .link-btn { padding: 0.2rem 0.3rem; font-size: 0.88rem; }
+  .recent-empty { margin: 0.9rem 0 0; color: var(--muted); }
+
+  /* ---------- Sample of the PDF ---------- */
+  .sample-caption { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.92rem; }
+  .sheet {
+    position: relative;
+    max-width: 34rem;
+    max-height: 36rem;
+    padding: 2.75rem 2.75rem 3rem;
+    overflow: hidden;
+    background: #fff;
+    color: #1A1A1A;
+    font-family: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(18, 28, 43, 0.06), 0 22px 44px -22px rgba(18, 28, 43, 0.3);
+  }
+  .sheet::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8rem;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 85%);
+    pointer-events: none;
+  }
+  .sheet h3 { margin: 0 0 1rem; font-size: 1.55rem; line-height: 1.2; }
+  .sheet h4 { margin: 1.15rem 0 0.35rem; font-size: 1.15rem; line-height: 1.25; }
+  .sheet h5 { margin: 0.9rem 0 0.25rem; font-size: 1rem; line-height: 1.3; }
+  .sheet p { margin: 0; font-size: 0.88rem; line-height: 1.6; }
+  .sheet ul { margin: 0; padding: 0; list-style: none; }
+  .sheet li { position: relative; padding-left: 1.5rem; font-size: 0.88rem; line-height: 1.6; }
+  .sheet li::before { content: "-"; position: absolute; left: 0.7rem; }
+  .sheet mark { padding: 0 0.12em; color: inherit; background: var(--highlight); border-radius: 2px; }
+
+  @media (max-width: 40rem) {
+    .wrap { padding: 0 1.1rem; }
+    .layout { padding-top: 2rem; }
+    .sheet { padding: 1.75rem 1.5rem 2rem; max-height: 28rem; }
+    .actions .btn-primary { width: 100%; }
+    .recent-item { grid-template-columns: minmax(0, 1fr); }
+    .recent-side { flex-direction: row; align-items: center; justify-content: space-between; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+    .success-mark path { animation: none; stroke-dashoffset: 0; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5.5" width="13" height="13" rx="2"/><path d="m16 10 5-3v10l-5-3z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V13M12 16.5v.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#1F3FBF"/><path d="M10 8h9l4 4v12H10z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M13 16h7M13 20h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Notewise</span>
+    </a>
+  </div>
+</header>
+
+<main id="main" class="wrap layout">
+
+  <section class="intro">
+    <h1>Turn a lecture into study notes</h1>
+    <p class="lede">Upload a lecture video or audio recording and choose the language spoken in it. You receive a PDF with a summary and the key topics, written in English.</p>
+  </section>
+
+  <section class="uploader" aria-label="Upload a video">
+    <form id="form" novalidate>
+      <label class="dropzone" id="dropzone">
+        <input class="visually-hidden" type="file" id="file" accept=".mp4,.mp3,.wav,.m4a,.flac,.ogg,.amr,.webm">
+        <div class="dz-surface">
+          <svg class="icon dz-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+          <p class="dz-title">Drag a file here, or <span class="link">choose a file</span></p>
+<p class="dz-hint">Video or audio (MP4, MP3, WAV, M4A, FLAC, OGG, AMR, WEBM), up to 2 GB and 4 hours</p>
+        </div>
+      </label>
+
+      <div class="file-card" id="file-card" hidden>
+        <div class="file-icon"><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg></div>
+        <div style="min-width:0">
+          <p class="file-name" id="file-name"></p>
+          <p class="file-meta" id="file-meta"></p>
+        </div>
+        <button type="button" class="link-btn" id="remove">Remove</button>
+        <div class="progress" id="progress" hidden>
+          <div class="bar" id="bar" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar-fill" id="bar-fill"></div></div>
+          <div class="progress-meta"><span id="progress-left"></span><span id="progress-right"></span></div>
+        </div>
+      </div>
+
+      <fieldset class="field">
+        <legend>Language spoken in the recording</legend>
+        <div class="select-wrap">
+          <select name="language" id="language">
+            <option value="en-US" selected>English</option>
+            <option value="ml-IN">Malayalam</option>
+            <option value="hi-IN">Hindi</option>
+            <option value="ta-IN">Tamil</option>
+            <option value="es-ES">Spanish</option>
+            <option value="fr-FR">French</option>
+          </select>
+        </div>
+        <p class="hint">Pick the main language. The notes are always written in English.</p>
+      </fieldset>
+
+      <div id="banner-region" aria-live="polite"></div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="submit" disabled>Upload file</button>
+        <button type="button" class="btn btn-secondary" id="cancel" hidden>Cancel upload</button>
+      </div>
+    </form>
+
+    <div class="success" id="success" hidden>
+      <div class="success-mark"><svg class="icon" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2 id="success-title" tabindex="-1">Upload received</h2>
+      <p>Processing has started automatically. Short videos finish in a few minutes; long ones take longer. The PDF is kept for at least 2 days, so download it soon.</p>
+      <span class="ref-label" id="ref-label">Reference for this upload</span>
+      <div class="ref">
+        <code id="ref-code" aria-labelledby="ref-label"></code>
+        <button type="button" class="link-btn" id="copy-ref"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+      <button type="button" class="btn btn-primary" id="again">Upload another file</button>
+    </div>
+  </section>
+
+  <section class="recent" aria-labelledby="recent-title">
+    <div class="recent-head">
+      <h2 id="recent-title">Recent uploads</h2>
+      <button type="button" class="link-btn" id="clear" hidden>Clear list</button>
+    </div>
+    <ul class="recent-list" id="recent-list"></ul>
+    <p class="recent-empty" id="recent-empty">Files you upload from this browser appear here.</p>
+  </section>
+
+  <aside class="sample" aria-label="Example of the PDF you receive">
+    <p class="sample-caption">Example of the PDF you receive</p>
+    <div class="sheet">
+      <h3>Newton's Laws of Motion</h3>
+      <h4>Summary</h4>
+      <p>This lecture introduces the three laws of motion and shows how each one explains everyday situations, from a book resting on a table to a rocket leaving the ground.</p>
+      <h4>Key Topics</h4>
+      <h5>First law: inertia</h5>
+      <ul>
+        <li>An object keeps its state of motion unless a <mark>net force</mark> acts on it.</li>
+        <li>Rest and constant velocity are treated as the same condition.</li>
+      </ul>
+      <h5>Second law: force and acceleration</h5>
+      <ul>
+        <li><mark>Force equals mass times acceleration</mark>, so the same force moves a lighter object faster.</li>
+        <li>The direction of the acceleration matches the direction of the net force.</li>
+      </ul>
+      <h5>Third law: action and reaction</h5>
+      <ul>
+        <li>Forces always come in pairs acting on two different objects.</li>
+        <li>A rocket accelerates because it pushes exhaust gases backwards.</li>
+      </ul>
+    </div>
+  </aside>
+
+</main>
+
+<noscript><p class="wrap">This page needs JavaScript to upload videos.</p></noscript>
+
+<script src="config.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const MAX_BYTES = 2 * 1024 ** 3;       // Amazon Transcribe accepts files up to 2 GB
+  const MAX_SECONDS = 4 * 60 * 60;       // ... and up to 4 hours of audio
+  const STORAGE_KEY = "lecture-notes:recent-uploads";
+  const MAX_RECENT = 8;
+  const LANGUAGES = {
+    "en-US": "English", "ml-IN": "Malayalam", "hi-IN": "Hindi",
+    "ta-IN": "Tamil", "es-ES": "Spanish", "fr-FR": "French"
+  };
+  const ALLOWED_EXTENSIONS = [".mp4", ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".amr", ".webm"];
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    form: $("form"), dropzone: $("dropzone"), fileInput: $("file"),
+    fileCard: $("file-card"), fileName: $("file-name"), fileMeta: $("file-meta"), remove: $("remove"),
+    progress: $("progress"), bar: $("bar"), barFill: $("bar-fill"),
+    progressLeft: $("progress-left"), progressRight: $("progress-right"),
+    bannerRegion: $("banner-region"), submit: $("submit"), cancel: $("cancel"),
+    success: $("success"), successTitle: $("success-title"), refCode: $("ref-code"),
+    copyRef: $("copy-ref"), again: $("again"),
+    recentList: $("recent-list"), recentEmpty: $("recent-empty"), clear: $("clear")
+  };
+  const languageInputs = Array.from(document.querySelectorAll('select[name="language"]'));
+
+  class UserError extends Error {}
+
+  let state = "idle";          // idle -> selected -> uploading -> done
+  let selectedFile = null;
+  let activeXhr = null;
+  let activeAbort = null;
+  let cancelled = false;
+  let durationToken = 0;
+
+  /* ---------- small helpers ---------- */
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function icon(id) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS(ns, "use");
+    use.setAttribute("href", "#" + id);
+    svg.appendChild(use);
+    return svg;
+  }
+
+  function formatBytes(bytes) {
+    if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(2) + " GB";
+    if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(bytes >= 100 * 1024 ** 2 ? 0 : 1) + " MB";
+    return Math.max(1, Math.round(bytes / 1024)) + " KB";
+  }
+
+  function formatDuration(totalSeconds) {
+    const s = Math.round(totalSeconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h) return h + " h " + m + " min";
+    if (m) return m + " min " + sec + " s";
+    return sec + " s";
+  }
+
+  function formatEta(seconds) {
+    if (!isFinite(seconds)) return "";
+    if (seconds < 5) return "a few seconds left";
+    if (seconds < 60) return "about " + Math.round(seconds / 5) * 5 + " s left";
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 60) return "about " + minutes + " min left";
+    return "about " + Math.floor(minutes / 60) + " h " + (minutes % 60) + " min left";
+  }
+
+  function timeAgo(timestamp) {
+    const seconds = Math.round((Date.now() - timestamp) / 1000);
+    if (seconds < 45) return "just now";
+    const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+    if (seconds < 3600) return rtf.format(-Math.round(seconds / 60), "minute");
+    if (seconds < 86400) return rtf.format(-Math.round(seconds / 3600), "hour");
+    return rtf.format(-Math.round(seconds / 86400), "day");
+  }
+
+  const isConfigured = () => !API_URL.startsWith("PASTE");
+  const selectedLanguage = () => document.querySelector('select[name="language"]').value;
+
+  /* ---------- messages ---------- */
+
+  function showBanner(kind, message, tag) {
+    els.bannerRegion.replaceChildren();
+    const banner = el("div", "banner banner-" + kind);
+    banner.dataset.tag = tag || "";
+    banner.append(icon(kind === "error" ? "i-alert" : "i-info"), el("p", null, message));
+    els.bannerRegion.append(banner);
+  }
+
+  function clearBanner(tag) {
+    const banner = els.bannerRegion.firstElementChild;
+    if (!banner) return;
+    if (tag ? banner.dataset.tag !== tag : banner.dataset.tag === "config") return;
+    banner.remove();
+  }
+
+  /* ---------- state ---------- */
+
+  function refreshSubmit() {
+    els.submit.disabled = !(state === "selected" && isConfigured() && navigator.onLine);
+  }
+
+  function setState(next) {
+    state = next;
+    const uploading = next === "uploading";
+    els.form.hidden = next === "done";
+    els.success.hidden = next !== "done";
+    els.dropzone.hidden = next !== "idle";
+    els.fileCard.hidden = !(next === "selected" || uploading);
+    els.progress.hidden = !uploading;
+    els.remove.hidden = uploading;
+    els.cancel.hidden = !uploading;
+    els.submit.textContent = uploading ? "Uploading\u2026" : "Upload file";
+    languageInputs.forEach((input) => { input.disabled = uploading; });
+    refreshSubmit();
+  }
+
+  /* ---------- choosing a file ---------- */
+
+  function validateFile(file) {
+    const lowerName = file.name.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
+      return "This file type is not supported. Use MP4, MP3, WAV, M4A, FLAC, OGG, AMR or WEBM.";
+    }
+    if (file.size === 0) return "This file is empty. Choose a different video.";
+    if (file.size > MAX_BYTES) return "This video is larger than 2 GB. Trim or compress it and try again.";
+    return "";
+  }
+
+  function readDuration(file) {
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      let finished = false;
+      const finish = (value) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        video.removeAttribute("src");
+        video.load();
+        URL.revokeObjectURL(url);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), 4000);
+      video.preload = "metadata";
+      video.onloadedmetadata = () => finish(isFinite(video.duration) ? video.duration : null);
+      video.onerror = () => finish(null);
+      video.src = url;
+    });
+  }
+
+  function discardFile() {
+    selectedFile = null;
+    durationToken++;
+    els.fileInput.value = "";
+    setState("idle");
+  }
+
+  async function handleFile(file) {
+    clearBanner();
+    const problem = validateFile(file);
+    if (problem) { showBanner("error", problem); return; }
+
+    selectedFile = file;
+    els.fileName.textContent = file.name;
+    els.fileName.title = file.name;
+    els.fileMeta.textContent = formatBytes(file.size);
+    setState("selected");
+
+    const token = ++durationToken;
+    const seconds = await readDuration(file);
+    if (token !== durationToken || selectedFile !== file) return;   // file changed meanwhile
+    if (seconds === null) return;                                   // browser can't read this codec; skip
+    if (seconds > MAX_SECONDS) {
+      discardFile();
+      showBanner("error", "This video is longer than 4 hours, the most the transcription service accepts. Split it into shorter parts.");
+      return;
+    }
+    els.fileMeta.textContent = formatBytes(file.size) + ", " + formatDuration(seconds);
+  }
+
+  els.fileInput.addEventListener("change", () => {
+    const file = els.fileInput.files[0];
+    els.fileInput.value = "";
+    if (file) handleFile(file);
+  });
+
+  // Stop the browser opening a video in the tab if it's dropped outside the drop area.
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+
+  els.dropzone.addEventListener("dragover", (e) => { e.preventDefault(); els.dropzone.classList.add("is-over"); });
+  els.dropzone.addEventListener("dragleave", () => els.dropzone.classList.remove("is-over"));
+  els.dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    els.dropzone.classList.remove("is-over");
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+    handleFile(files[0]);
+    if (files.length > 1) showBanner("info", "Upload one video at a time. Using the first file you dropped.");
+  });
+
+  els.remove.addEventListener("click", () => { clearBanner(); discardFile(); });
+
+  /* ---------- uploading ---------- */
+
+  async function requestUploadUrl(file, language) {
+    activeAbort = new AbortController();
+    let res;
+    try {
+      res = await fetch(API_URL.replace(/\/+$/, "") + "/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, language_code: language }),
+        signal: activeAbort.signal
+      });
+    } catch (err) {
+      if (cancelled) throw err;
+      throw new UserError("Can't reach the upload service. Check your internet connection and try again.");
+    }
+
+    let data = {};
+    try { data = await res.json(); } catch (err) { /* non-JSON error body */ }
+
+    if (res.status === 429) throw new UserError("Too many upload requests right now. Wait a minute, then try again.");
+    if (res.status >= 500) throw new UserError("The upload service had a problem. Try again in a moment.");
+    if (!res.ok) throw new UserError(data.error || "The upload service rejected the request (" + res.status + ").");
+    if (!data.upload_url || !data.fields || !data.key) throw new UserError("The upload service sent an unexpected response. Try again.");
+    return data;
+  }
+
+  function paintProgress(loaded, total, samples) {
+    const percent = Math.min(100, Math.floor((loaded / total) * 100));
+    els.barFill.style.width = percent + "%";
+    els.bar.setAttribute("aria-valuenow", String(percent));
+
+    if (percent >= 100) {
+      els.progressLeft.textContent = "100%, " + formatBytes(total);
+      els.progressRight.textContent = "Finishing upload\u2026";
+      return;
+    }
+    els.progressLeft.textContent = percent + "%, " + formatBytes(loaded) + " of " + formatBytes(total);
+
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    const span = last && first ? (last.t - first.t) / 1000 : 0;
+    if (span > 0.5) {
+      const speed = (last.loaded - first.loaded) / span;
+      if (speed > 0) {
+        els.progressRight.textContent = formatBytes(speed) + "/s, " + formatEta((total - loaded) / speed);
+        return;
+      }
+    }
+    els.progressRight.textContent = "";
+  }
+
+  // Sends the video to S3 as a signed form (a POST). The name is kept from
+  // the older version that used a PUT.
+  function putFile(file, info) {
+    return new Promise((resolve, reject) => {
+      const req = new XMLHttpRequest();
+      activeXhr = req;
+      req.open("POST", info.upload_url);
+
+      // Every field the service sent is part of the signed form, and the
+      // file itself must be the LAST field, or S3 rejects the upload.
+      const form = new FormData();
+      Object.entries(info.fields).forEach(([name, value]) => form.append(name, value));
+      form.append("file", file);
+
+      const samples = [];
+      let lastPaint = 0;
+      req.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
+        const now = performance.now();
+        samples.push({ t: now, loaded: ev.loaded });
+        while (samples.length > 2 && now - samples[0].t > 5000) samples.shift();
+        if (now - lastPaint < 200 && ev.loaded < ev.total) return;
+        lastPaint = now;
+        paintProgress(ev.loaded, ev.total, samples);
+      };
+      req.onload = () => {
+        if (req.status >= 200 && req.status < 300) {
+          paintProgress(file.size, file.size, []);
+          resolve();
+        } else if (req.status === 400 && req.responseText.includes("EntityTooLarge")) {
+          reject(new UserError("This video is larger than 2 GB, the most that is accepted. Trim or compress it and try again."));
+        } else if (req.status === 403) {
+          reject(new UserError("The upload link expired or was rejected. Try again to get a new link."));
+        } else {
+          reject(new UserError("The upload was rejected (" + req.status + "). Try again."));
+        }
+      };
+      req.onerror = () => reject(new UserError("The upload was interrupted. Check your connection and try again. Your file is still selected."));
+      req.onabort = () => reject(new Error("cancelled"));
+      req.send(form);
+    });
+  }
+
+  function resetProgress() {
+    els.barFill.style.width = "0";
+    els.bar.setAttribute("aria-valuenow", "0");
+    els.progressLeft.textContent = "Preparing upload\u2026";
+    els.progressRight.textContent = "";
+  }
+
+  async function startUpload() {
+    if (state !== "selected" || !selectedFile) return;
+    clearBanner();
+    cancelled = false;
+    const file = selectedFile;
+    const language = selectedLanguage();
+    setState("uploading");
+    resetProgress();
+
+    try {
+      const info = await requestUploadUrl(file, language);
+      await putFile(file, info);
+      saveRecent({ key: info.key, name: file.name, size: file.size, language, at: Date.now() });
+      els.refCode.textContent = info.key;
+      selectedFile = null;
+      els.fileInput.value = "";
+      setState("done");
+      els.successTitle.focus();
+    } catch (err) {
+      setState("selected");
+      if (cancelled) {
+        showBanner("info", "Upload cancelled. Your file is still selected.");
+      } else {
+        if (!(err instanceof UserError)) console.error(err);
+        showBanner("error", err instanceof UserError ? err.message : "Something went wrong during the upload. Try again.");
+        els.submit.textContent = "Try again";
+      }
+    } finally {
+      activeXhr = null;
+      activeAbort = null;
+    }
+  }
+
+  els.form.addEventListener("submit", (e) => { e.preventDefault(); startUpload(); });
+
+  els.cancel.addEventListener("click", () => {
+    cancelled = true;
+    if (activeXhr) activeXhr.abort();
+    if (activeAbort) activeAbort.abort();
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (state === "uploading") { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  els.again.addEventListener("click", () => { clearBanner(); discardFile(); });
+
+  /* ---------- reference copy ---------- */
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (err) { /* fall back below */ }
+    try {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok;
+    } catch (err) { return false; }
+  }
+
+  async function copyWithFeedback(button, text) {
+    const label = button.querySelector("span") || button;
+    const original = label.textContent;
+    label.textContent = (await copyText(text)) ? "Copied" : "Copy failed";
+    setTimeout(() => { label.textContent = original; }, 1800);
+  }
+
+  els.copyRef.addEventListener("click", () => copyWithFeedback(els.copyRef, els.refCode.textContent));
+
+  /* ---------- recent uploads (kept in this browser only) ---------- */
+
+  function loadRecent() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((item) => item && typeof item.key === "string" && typeof item.name === "string");
+    } catch (err) { return []; }
+  }
+
+  function storeRecent(list) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch (err) { /* storage unavailable */ }
+  }
+
+  function saveRecent(entry) {
+    const list = loadRecent().filter((item) => item.key !== entry.key);
+    list.unshift({ ...entry, status: "PROCESSING" });
+    storeRecent(list.slice(0, MAX_RECENT));
+    renderRecent();
+    pollStatuses();
+  }
+
+  function badgeFor(item) {
+    if (item.status === "COMPLETE") return { className: "badge badge-ready", text: "Ready" };
+    if (item.status === "FAILED") return { className: "badge badge-failed", text: "Failed" };
+    if (item.status === "EXPIRED") return { className: "badge badge-expired", text: "Expired" };
+    return { className: "badge", text: "Sent for processing" };
+  }
+
+  function renderRecent() {
+    const list = loadRecent();
+    els.recentList.replaceChildren();
+    els.recentEmpty.hidden = list.length > 0;
+    els.clear.hidden = list.length === 0;
+
+    list.forEach((item) => {
+      const row = el("li", "recent-item");
+
+      const main = el("div");
+      const name = el("p", "recent-name", item.name);
+      name.title = item.name;
+      const meta = el("p", "recent-meta");
+      const when = el("time", null, timeAgo(item.at));
+      when.dateTime = new Date(item.at).toISOString();
+      when.title = new Date(item.at).toLocaleString();
+      meta.append(
+        (LANGUAGES[item.language] || "Unknown language") + ", " + formatBytes(item.size || 0) + ", ",
+        when
+      );
+      main.append(name, meta);
+
+      const side = el("div", "recent-side");
+      const badge = badgeFor(item);
+      const badgeEl = el("span", badge.className, badge.text);
+
+      if (item.status === "COMPLETE") {
+        const download = el("button", "link-btn");
+        download.type = "button";
+        download.dataset.download = item.key;
+        download.append(el("span", null, "Download PDF"));
+        side.append(badgeEl, download);
+      } else {
+        const copy = el("button", "link-btn");
+        copy.type = "button";
+        copy.dataset.key = item.key;
+        copy.append(el("span", null, "Copy reference"));
+        side.append(badgeEl, copy);
+      }
+
+      row.append(main, side);
+      els.recentList.append(row);
+    });
+  }
+
+  let polling = false;
+  let checkedReady = false;   // "Ready" items are re-checked once per page load
+
+  async function pollStatuses() {
+    if (polling) return;
+    // Items still processing are checked on every poll. Finished ("Ready")
+    // items are checked once per page load, so a PDF deleted by the clean-up
+    // rule shows "Expired" instead of a Download button that fails.
+    const pending = loadRecent().filter((item) =>
+      item.status !== "FAILED" && item.status !== "EXPIRED" &&
+      (item.status !== "COMPLETE" || !checkedReady));
+    checkedReady = true;
+    if (pending.length === 0) return;
+
+    polling = true;
+    try {
+      // One at a time: the API allows only a few requests per second.
+      const updates = {};
+      for (const item of pending) {
+        try {
+          const res = await fetch(API_URL.replace(/\/+$/, "") + "/status?key=" + encodeURIComponent(item.key));
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.status) updates[item.key] = data.status;
+        } catch (err) { /* network hiccup - try again on the next poll */ }
+      }
+
+      // Re-read the list AFTER the network calls, so an upload saved (or a list
+      // cleared) while we were waiting is not overwritten with an old copy.
+      const fresh = loadRecent();
+      fresh.forEach((item) => { if (updates[item.key]) item.status = updates[item.key]; });
+      storeRecent(fresh);
+      renderRecent();
+    } finally {
+      polling = false;
+    }
+  }
+
+  // The download link expires after 5 minutes, so it is never stored:
+  // a fresh one is requested at the moment of the click.
+  async function downloadPdf(button, key) {
+    const label = button.querySelector("span");
+    const original = label.textContent;
+    button.disabled = true;
+    label.textContent = "Preparing\u2026";
+    try {
+      const res = await fetch(API_URL.replace(/\/+$/, "") + "/status?key=" + encodeURIComponent(key));
+      const data = await res.json();
+      if (res.ok && data.status === "COMPLETE" && data.download_url) {
+        window.location.href = data.download_url;
+        label.textContent = original;
+      } else if (res.ok && data.status === "EXPIRED") {
+        // The PDF was deleted by the clean-up rule: remember that and redraw the row.
+        const list = loadRecent();
+        list.forEach((item) => { if (item.key === key) item.status = "EXPIRED"; });
+        storeRecent(list);
+        renderRecent();
+      } else {
+        label.textContent = "Not ready yet";
+      }
+    } catch (err) {
+      label.textContent = "Couldn't download";
+    } finally {
+      button.disabled = false;
+      setTimeout(() => { label.textContent = original; }, 2500);
+    }
+  }
+
+  els.recentList.addEventListener("click", (e) => {
+    const copyButton = e.target.closest("button[data-key]");
+    if (copyButton) { copyWithFeedback(copyButton, copyButton.dataset.key); return; }
+    const downloadButton = e.target.closest("button[data-download]");
+    if (downloadButton) downloadPdf(downloadButton, downloadButton.dataset.download);
+  });
+
+  els.clear.addEventListener("click", () => { storeRecent([]); renderRecent(); });
+
+  /* ---------- connection awareness ---------- */
+
+  function checkOnline() {
+    if (!navigator.onLine) showBanner("info", "You're offline. Reconnect to upload a video.", "offline");
+    else clearBanner("offline");
+    refreshSubmit();
+  }
+  window.addEventListener("online", checkOnline);
+  window.addEventListener("offline", checkOnline);
+
+  /* ---------- start up ---------- */
+
+  setState("idle");
+  renderRecent();
+  setInterval(renderRecent, 60000);   // keeps "2 minutes ago" fresh
+  pollStatuses();
+  setInterval(pollStatuses, 15000);   // checks pending uploads for a finished PDF
+
+  if (!isConfigured()) {
+    showBanner("error", "This page isn't connected to the upload service yet. Set API_URL near the top of the page's script.", "config");
+  }
+  checkOnline();
+})();
+</script>
+</body>
+</html>
